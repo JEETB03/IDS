@@ -64,6 +64,15 @@ def startup_event():
 def get_alerts():
     return recent_alerts
 
+@app.get("/stats")
+def get_stats():
+    return {
+        "packets_per_second": sniffer.global_stats["packets_per_second"],
+        "total_packets": sniffer.global_stats["total_packets"],
+        "active_flows": len(sniffer.active_flows),
+        "threat_count": len(recent_alerts) # Or meaningful time-windowed count
+    }
+
 @app.get("/history")
 def get_history():
     conn = sqlite3.connect(DB_PATH)

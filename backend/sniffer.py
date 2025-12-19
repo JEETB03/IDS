@@ -14,6 +14,13 @@ SCALER_PATH = "scaler.pkl"
 FEATURES_PATH = "selected_features.pkl"
 LABEL_ENCODER_PATH = "label_encoder.pkl"
 
+# Global Stats
+global_stats = {
+    "total_packets": 0,
+    "start_time": time.time(),
+    "packets_per_second": 0
+}
+
 class Flow:
     def __init__(self, src_ip, dst_ip, src_port, dst_port, protocol):
         self.src_ip = src_ip
@@ -149,6 +156,11 @@ class Flow:
         return features
 
 active_flows = {}
+scan_candidates = defaultdict(set) # {src_ip: {dst_port1, dst_port2, ...}}
+scan_start_time = defaultdict(float) # {src_ip: start_timestamp}
+SCAN_THRESHOLD = 20 # Ports
+SCAN_WINDOW = 10 # Seconds
+
 flow_lock = threading.Lock()
 flow_timeout = 5 # Seconds
 
@@ -158,6 +170,11 @@ def packet_callback(packet):
 
     src_ip = packet[IP].src
     dst_ip = packet[IP].dst
+    global_stats["total_packets"] += 1
+    elapsed = time.time() - global_stats["start_time"]
+    if elapsed > 0:
+        global_stats["packets_per_second"] = global_stats["total_packets"] / elapsed
+
     protocol = packet[IP].proto
     
     src_port = 0
@@ -181,6 +198,35 @@ def packet_callback(packet):
         else:
             active_flows[flow_id] = Flow(src_ip, dst_ip, src_port, dst_port, protocol)
             active_flows[flow_id].add_packet(packet, "fwd")
+            
+            # Port Scan Detection Logic
+            if protocol == 6: # TCP
+                current_time = time.time()
+                # Check if window expired
+                if current_time - scan_start_time[src_ip] > SCAN_WINDOW:
+                    scan_candidates[src_ip].clear()
+                    scan_start_time[src_ip] = current_time
+                
+                scan_candidates[src_ip].add(dst_port)
+                
+                if len(scan_candidates[src_ip]) > SCAN_THRESHOLD:
+                    print(f"\033[91mHeuristic Alert: Port Scan detected from {src_ip} (Scanned {len(scan_candidates[src_ip])} ports)\033[0m")
+                    
+                    # Report to Dashboard once per window (or throttle)
+                    # To avoid spamming, we can check if we already reported recently?
+                    # For simplicity, let's report if it's hitting specific multiples or just let it flow (might spam).
+                    # Let's simple throttle: only report if count == SCAN_THRESHOLD + 1 (just crossed)
+                    # OR count % 20 == 0
+                    
+                    if len(scan_candidates[src_ip]) == SCAN_THRESHOLD + 1:
+                         callback_func({
+                            "src_ip": src_ip,
+                            "dst_ip": "Multiple",
+                            "type": "Port Scan",
+                            "timestamp": current_time,
+                            "details": {"scanned_ports": len(scan_candidates[src_ip])}
+                        })
+
 
 def process_flows(callback_func):
     model = None

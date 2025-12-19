@@ -28,7 +28,7 @@ def syn_flood(target_ip, target_port, count=1000):
 
 if __name__ == "__main__":
     # Target localhost or the interface IP
-    target_ip = "8.8.8.8" 
+    target_ip = "192.168.0.107" 
     target_port = 80
     
     # Increase count for better detection chance

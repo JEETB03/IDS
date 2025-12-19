@@ -10,29 +10,44 @@ import Link from 'next/link';
 
 export default function Dashboard() {
     const [alerts, setAlerts] = useState([]);
-    const [stats, setStats] = useState({ total: 0, benign: 0, malicious: 0 });
+    const [stats, setStats] = useState({ total_packets: 0, fps: 0, active_flows: 0, threats: 0 });
     const [chartData, setChartData] = useState<any[]>([]);
+    const [isUnderAttack, setIsUnderAttack] = useState(false);
 
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const res = await api.get('/alerts');
-                setAlerts(res.data);
+                const alertsRes = await api.get('/alerts');
+                setAlerts(alertsRes.data);
 
-                // Calculate stats
-                const malicious = res.data.length; // Assuming API only returns alerts (malicious)
-                setStats({ total: malicious, benign: 0, malicious });
+                const statsRes = await api.get('/stats');
+                const liveStats = statsRes.data;
 
-                // Update chart data (mocking traffic flow for demo if no real data)
+                // Check for generic attack condition
+                const recentThreats = alertsRes.data.filter((a: any) => (Date.now() / 1000) - a.timestamp < 10).length; // Threats in last 10s
+                setIsUnderAttack(recentThreats > 0);
+
+                setStats({
+                    total_packets: liveStats.total_packets,
+                    fps: Math.round(liveStats.packets_per_second),
+                    active_flows: liveStats.active_flows,
+                    threats: alertsRes.data.length
+                });
+
+                // Update chart data
                 setChartData(prev => {
                     const now = new Date().toLocaleTimeString();
-                    const newData = [...prev, { name: now, threats: malicious }];
+                    const newData = [...prev, {
+                        name: now,
+                        traffic: Math.round(liveStats.packets_per_second),
+                        threats: recentThreats * 10 // Scale for visibility if needed
+                    }];
                     if (newData.length > 20) newData.shift();
                     return newData;
                 });
 
             } catch (error) {
-                console.error("Error fetching alerts:", error);
+                console.error("Error fetching data:", error);
             }
         };
 
@@ -61,26 +76,28 @@ export default function Dashboard() {
 
                 {/* Stats Row */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-gray-800/80 backdrop-blur-sm p-6 rounded-xl shadow-lg border border-gray-700 flex items-center justify-between hover:border-green-500/50 transition-colors group">
+                    <div className={`bg-gray-800/80 backdrop-blur-sm p-6 rounded-xl shadow-lg border ${isUnderAttack ? 'border-red-500 animate-pulse' : 'border-gray-700'} flex items-center justify-between transition-colors group`}>
                         <div>
-                            <p className="text-sm text-gray-400 uppercase font-semibold group-hover:text-green-400 transition-colors">System Status</p>
-                            <p className="text-2xl font-bold text-green-500 mt-1">Active Monitoring</p>
+                            <p className="text-sm text-gray-400 uppercase font-semibold">System Status</p>
+                            <p className={`text-2xl font-bold mt-1 ${isUnderAttack ? 'text-red-500' : 'text-green-500'}`}>
+                                {isUnderAttack ? 'UNDER ATTACK' : 'Active Monitoring'}
+                            </p>
                         </div>
-                        <Activity className="w-10 h-10 text-green-500 opacity-20 group-hover:opacity-100 transition-opacity" />
+                        <Activity className={`w-10 h-10 ${isUnderAttack ? 'text-red-500' : 'text-green-500'}`} />
                     </div>
-                    <div className="bg-gray-800/80 backdrop-blur-sm p-6 rounded-xl shadow-lg border border-gray-700 flex items-center justify-between hover:border-red-500/50 transition-colors group">
+                    <div className="bg-gray-800/80 backdrop-blur-sm p-6 rounded-xl shadow-lg border border-gray-700 flex items-center justify-between group">
                         <div>
-                            <p className="text-sm text-gray-400 uppercase font-semibold group-hover:text-red-400 transition-colors">Threats Detected</p>
-                            <p className="text-2xl font-bold text-red-500 mt-1">{stats.malicious}</p>
+                            <p className="text-sm text-gray-400 uppercase font-semibold">Active Flows</p>
+                            <p className="text-2xl font-bold text-blue-500 mt-1">{stats.active_flows}</p>
                         </div>
-                        <AlertOctagon className="w-10 h-10 text-red-500 opacity-20 group-hover:opacity-100 transition-opacity" />
+                        <AlertOctagon className="w-10 h-10 text-blue-500 opacity-20 group-hover:opacity-100 transition-opacity" />
                     </div>
-                    <div className="bg-gray-800/80 backdrop-blur-sm p-6 rounded-xl shadow-lg border border-gray-700 flex items-center justify-between hover:border-blue-500/50 transition-colors group">
+                    <div className="bg-gray-800/80 backdrop-blur-sm p-6 rounded-xl shadow-lg border border-gray-700 flex items-center justify-between group">
                         <div>
-                            <p className="text-sm text-gray-400 uppercase font-semibold group-hover:text-blue-400 transition-colors">Network Load</p>
-                            <p className="text-2xl font-bold text-blue-500 mt-1">Normal</p>
+                            <p className="text-sm text-gray-400 uppercase font-semibold">Traffic (PPS)</p>
+                            <p className="text-2xl font-bold text-purple-500 mt-1">{stats.fps}</p>
                         </div>
-                        <Shield className="w-10 h-10 text-blue-500 opacity-20 group-hover:opacity-100 transition-opacity" />
+                        <Shield className="w-10 h-10 text-purple-500 opacity-20 group-hover:opacity-100 transition-opacity" />
                     </div>
                 </div>
 
@@ -99,7 +116,8 @@ export default function Dashboard() {
                                         contentStyle={{ backgroundColor: '#1F2937', border: 'none', borderRadius: '8px', color: '#fff' }}
                                         itemStyle={{ color: '#fff' }}
                                     />
-                                    <Line type="monotone" dataKey="threats" stroke="#EF4444" strokeWidth={2} dot={false} activeDot={{ r: 8 }} />
+                                    <Line type="monotone" dataKey="threats" stroke="#EF4444" strokeWidth={2} dot={false} activeDot={{ r: 8 }} name="Threat Intensity" />
+                                    <Line type="monotone" dataKey="traffic" stroke="#8B5CF6" strokeWidth={2} dot={false} name="Traffic (PPS)" />
                                 </LineChart>
                             </ResponsiveContainer>
                         </div>
