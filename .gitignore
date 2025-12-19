@@ -1,0 +1,29 @@
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.env
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+.next/
+dist/
+build/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+
+# Datasets and Large Files
+*.zip
+*.csv
+GeneratedLabelledFlows/
+MachineLearningCSV/
+KDDTrain+.txt/
